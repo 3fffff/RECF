@@ -2,21 +2,17 @@ class ReCF {
   constructor() {
     this.model_sz = [50, 50];
     this.target_padding = 2.0;
-    this.update_rate = 0.023;
+    this.update_rate = 0.12;
     this.sigma_factor = 1.0 / 16.0;
-    this.beta = 500;
-    this.gamma_I = 103.2;
-    this.gamma_H = 28;
     this.admm = 2
     this.init = false
   }
 
   preprocess(data, div, sub, region) {
     // in-place
-    let result = new Float32Array(3 * region.w * region.h)
-    let pos = 0
-    for (let y = region.y; y < region.y1; y++) {
-      for (let x = region.x; x < region.x1; x++) {
+    let result = new Float32Array(3 * region.w * region.h), pos = 0
+    for (let y = region.y; y < region.y + region.h; y++) {
+      for (let x = region.x; x < region.x + region.w; x++) {
         const pp = (y * data.width + x) * 4;
         result[pos++] = (data.data[pp + 0] * div + sub)
         result[pos++] = (data.data[pp + 1] * div + sub);
@@ -43,7 +39,6 @@ class ReCF {
     return result;
   }
   multiply(cn1, cn2) {
-    // not in-place
     let result = { re: new Float32Array(cn1.re.length), im: new Float32Array(cn1.re.length) };
     for (let r = 0; r < cn1.re.length; r++) {
       result.re[r] = (cn1.re[r] * cn2.re[r]) - (cn1.im[r] * cn2.im[r]);
@@ -92,7 +87,6 @@ class ReCF {
     return result;
   }
   divide(cn1, cn2) {
-    // not in-place (TODO)
     let result = { re: new Float32Array(cn1.re.length), im: new Float32Array(cn1.re.length) };
     for (let r = 0; r < cn1.re.length; r++) {
       result.re[r] = ((cn1.re[r] * cn2.re[r]) + (cn1.im[r] * cn2.im[r])) / ((cn2.re[r] * cn2.re[r]) + (cn2.im[r] * cn2.im[r]));
@@ -110,12 +104,14 @@ class ReCF {
 
   channelSum(a) {
     let sum = { re: new Float32Array(a[0].re.length), im: new Float32Array(a[0].re.length) };
-    for (let i = 0; i < a.length; ++i)sum = this.addition(sum, a[i]);
+    for (let i = 0; i < a.length; ++i) {
+      sum = this.addition(sum, a[i]);
+      console.log(sum)
+    }
     return sum;
   }
   minMaxLoc(array) {
-    let max = 0;
-    let maxpos = { x: 0, y: 0 };
+    let max = 0, maxpos = { x: 0, y: 0 };
     for (let x = 0; x < this.model_sz[0]; x++) {
       for (let y = 0; y < this.model_sz[1]; y++) {
         const val = array[(y * this.model_sz[0]) + x];
@@ -130,12 +126,9 @@ class ReCF {
     return maxpos;
   }
   extractTrackedRegion(image, region) {
-    //compute the acual rectangle we will extract from the image
     const extractionRegion = {
-      x: region.x,
-      y: region.y,
-      x1: region.x + Math.floor(region.w),
-      y1: region.y + Math.floor(region.h),
+      x: region.x - region.w / 2.0,
+      y: region.y - region.h / 2.0,
       w: region.w,
       h: region.h
     };
@@ -144,57 +137,55 @@ class ReCF {
     if (extractionRegion.x + extractionRegion.w > 0 && extractionRegion.y + extractionRegion.h > 0 &&
       extractionRegion.x < image.width && extractionRegion.y < image.height) {
       const real_patch = this.preprocess(image, 1 / 255, -0.5, extractionRegion);
-      return this.resize(real_patch, extractionRegion.w, extractionRegion.h);
-    }
+      return this.resize(real_patch, { width: extractionRegion.w, height: extractionRegion.h }, { width: this.model_sz[0], height: this.model_sz[1] });
+    } else throw new Error("no extract region")
   }
-  resize(input, width, height) {
-    const red = { re: new Float32Array(this.model_sz[1] * this.model_sz[0]), im: new Float32Array(this.model_sz[1] * this.model_sz[0]) };
-    const green = { re: new Float32Array(this.model_sz[1] * this.model_sz[0]), im: new Float32Array(this.model_sz[1] * this.model_sz[0]) };
-    const blue = { re: new Float32Array(this.model_sz[1] * this.model_sz[0]), im: new Float32Array(this.model_sz[1] * this.model_sz[0]) };
-    const scale = [(this.model_sz[0] / width), (this.model_sz[1] / height)]
-    for (let y = 0; y < this.model_sz[1]; ++y) {
-      const inY1 = Math.min(~~(y / scale[1]), height - 1);
-      const inY2 = Math.min(inY1 + 1, height - 1);
-      const dy1 = Math.floor(y / scale[1]) - inY1, dy2 = Math.floor(y / scale[1]) - inY2;
-      for (let x = 0; x < this.model_sz[0]; ++x) {
-        const inX1 = Math.min(~~(x / (this.model_sz[0] / width)), width - 1);
-        const inX2 = Math.min(inX1 + 1, width - 1);
-        const dx1 = x / (scale[0]) - inX1, dx2 = x / (scale[0]) - inX2
-        const x11 = (width * inY1 + inX1) * 3;
-        const x21 = (width * inY1 + inX2) * 3;
-        const x12 = (width * inY2 + inX1) * 3;
-        const x22 = (width * inY2 + inX2) * 3;
-        red.re[(y * this.model_sz[0] + x)] =
+
+  resize(input, src, dst, channels = 3) {
+    const red = { re: new Float32Array(dst.height * dst.width), im: new Float32Array(dst.height * dst.width) };
+    const green = { re: new Float32Array(dst.height * dst.width), im: new Float32Array(dst.height * dst.width) };
+    const blue = { re: new Float32Array(dst.height * dst.width), im: new Float32Array(dst.height * dst.width) };
+    const scale = [(dst.width / src.width), (dst.height / src.height)]
+    for (let y = 0; y < dst.height; ++y) {
+      const inY1 = Math.min(~~(y / scale[1]), src.height - 1);
+      const inY2 = Math.min(inY1 + 1, src.height - 1);
+      const dy1 = ~~(y / scale[1]) - inY1, dy2 = ~~(y / scale[1]) - inY2;
+      for (let x = 0; x < dst.width; ++x) {
+        const inX1 = Math.min(~~(x / (dst.width / src.width)), src.width - 1);
+        const inX2 = Math.min(inX1 + 1, src.width - 1);
+        const dx1 = ~~(x / (scale[0])) - inX1, dx2 = ~~(x / (scale[0])) - inX2
+        const x11 = (src.width * inY1 + inX1) * channels;
+        const x21 = (src.width * inY1 + inX2) * channels;
+        const x12 = (src.width * inY2 + inX1) * channels;
+        const x22 = (src.width * inY2 + inX2) * channels;
+        red.re[(y * dst.width + x)] =
           dx2 * dy2 * input[x11 + 0] + dx1 * dy2 * input[x21 + 0] + dx2 * dy1 * input[x12 + 0] + dx1 * dy1 * input[x22 + 0];
-        green.re[(y * this.model_sz[0] + x)] =
+        green.re[(y * dst.width + x)] =
           dx2 * dy2 * input[x11 + 1] + dx1 * dy2 * input[x21 + 1] + dx2 * dy1 * input[x12 + 1] + dx1 * dy1 * input[x22 + 1];
-        blue.re[(y * this.model_sz[0] + x)] =
+        blue.re[(y * dst.width + x)] =
           dx2 * dy2 * input[x11 + 2] + dx1 * dy2 * input[x21 + 2] + dx2 * dy1 * input[x12 + 2] + dx1 * dy1 * input[x22 + 2];
       }
     }
     return [red, green, blue]
   }
+
   updateImpl(image) {
     this.detect(image);
+    this.targetOut = { x: this.target.x, y: this.target.y, w: this.target.w / this.target_padding, h: this.target.h / this.target_padding }
     this.update(image);
-    console.log(this.target)
   }
 
   initialize(image, region) {
-    this.target = region
-    const modelSize = Math.sqrt((region.h * region.w) * 16)
-    this.model_sz = [Math.round(Math.round(modelSize) / 4), Math.round(Math.round(modelSize) / 4)]
-    //this.region = { x: this.target.x, y: this.target.y, w: modelSize, h: modelSize }
+    this.target = { x: region.x + ~~(region.w / 2), y: region.y + ~~(region.h / 2), w: this.target_padding * region.w, h: this.target_padding * region.h }
     this.dft = new DFT(this.model_sz[0], this.model_sz[1])
-    this.scale_factor = Math.sqrt((this.target.w * this.target.h) / (this.model_sz[0] * this.model_sz[1]));
-    this.model_xf = this.initArray()
-    this.model_xfp = this.initArray()
-    //create window functions
-    this.labelsf = this.make_labels(region);
-    this.filterf = this.initArray()
-    this.window = this.hannWindow();
-    this.regwindow = this.make_regwindow()
+    this.scale_factor = Math.sqrt(this.target.w * this.target.h / (this.model_sz[0] * this.model_sz[1]));
+    const resize_factor = (1.0 / this.scale_factor) * (1.0 / this.target_padding);
+    this.model_xf = this.init_array()
+    this.labelsf = this.make_labels({ w: ~~(this.target.w * resize_factor), h: ~~(this.target.h * resize_factor) }, this.model_sz);
+    this.filterf = this.init_array()
+    this.window = this.hann_window();
     this.update(image);
+    this.targetOut = { x: this.target.x, y: this.target.y, w: this.target.w / this.target_padding, h: this.target.h / this.target_padding }
     this.init = true
   }
 
@@ -202,7 +193,6 @@ class ReCF {
     const feature_vecf = this.compute_feature_vec(image);
     if (!this.init) this.model_xf = feature_vecf;
     else {
-      this.model_xfp = this.model_xf
       for (let i = 0; i < this.model_xf.length; i++)
         this.model_xf[i] = this.addition(this.mul(this.model_xf[i], 1 - this.update_rate), this.mul(feature_vecf[i], this.update_rate));
     }
@@ -216,6 +206,7 @@ class ReCF {
 
   detect(image) {
     const response = this.compute_response(image);
+    console.log(response)
     const maxpos = this.minMaxLoc(response.re);
     //region w or h
     this.target.x = this.target.x + Math.round(this.shift_index(maxpos.x, this.model_sz[0]) * this.scale_factor / 2);
@@ -232,8 +223,10 @@ class ReCF {
   fft2(channels) {
     const channelsf = Array(channels.length)
     for (let i = 0; i < channels.length; ++i) {
-      let windowed = this.multiply(channels[i], this.window);
+      const windowed = this.multiply(channels[i], this.window);
       channelsf[i] = this.dft.fft2(windowed);
+      //console.log(channels[i])
+      //console.log(channelsf[i])
     }
     return channelsf;
   }
@@ -241,7 +234,7 @@ class ReCF {
   shift_index(index, length) {
     return (index > length / 2) ? -length + index : index;
   }
-  hannWindow() {
+  hann_window() {
     const array = { re: new Float32Array(this.model_sz[0] * this.model_sz[1]), im: new Float32Array(this.model_sz[0] * this.model_sz[1]) }
     const tvec = Array(this.model_sz[0] + this.target_padding)
     for (let i = 0; i < Math.round((this.model_sz[0] + this.target_padding) / 2); i++) {
@@ -254,8 +247,8 @@ class ReCF {
         array.re[(k - 1) * this.model_sz[0] + (j - 1)] = tvec[k] * tvec[j];
     return array
   }
-  make_labels(target_size) {
-    const new_labels = { re: new Float32Array(this.model_sz[1] * this.model_sz[0]), im: new Float32Array(this.model_sz[1] * this.model_sz[0]) };
+  make_labels(target_size, model_sz) {
+    const labels = { re: new Float32Array(model_sz[1] * model_sz[0]), im: new Float32Array(model_sz[1] * model_sz[0]) };
     const sigma = Math.sqrt(target_size.h * target_size.w) * this.sigma_factor;
     const constant = -0.5 / Math.pow(sigma, 2);
     for (let x = 0; x < this.model_sz[0]; x++) {
@@ -263,60 +256,23 @@ class ReCF {
         const shift_x = this.shift_index(x, this.model_sz[0]);
         const shift_y = this.shift_index(y, this.model_sz[1]);
         const value = Math.exp(constant * (Math.pow(shift_x, 2) + Math.pow(shift_y, 2)));
-        new_labels.re[y * this.model_sz[0] + x] = value;
+        labels.re[y * this.model_sz[0] + x] = value;
       }
     }
-    console.log(new_labels)
-    return this.dft.fft2(new_labels);
+    return this.dft.fft2(labels);
   }
-  make_regwindow() {
-    const regwindow = { re: new Float32Array(this.model_sz[1] * this.model_sz[0]), im: new Float32Array(this.model_sz[1] * this.model_sz[0]) };
-    const model = [Math.floor(this.target.w / 4), Math.floor(this.target.h / 4)]
-    const center = [Math.round(this.model_sz[0] / 2), Math.round(this.model_sz[1] / 2)]
-    const centerx = [-Math.ceil(model[0] / 2), Math.floor(model[0] / 2)]
-    const centery = [-Math.ceil(model[1] / 2), Math.floor(model[1] / 2)]
-    for (let i = 0; i < this.model_sz[0]; i++) {
-      for (let j = 0; j < this.model_sz[1]; j++) {
-        regwindow.re[j * this.model_sz[0] + i] = Math.pow(100000, 2) / (this.model_sz[0] * this.model_sz[1])
-        if (i >= center[0] + centerx[0] && i < center[0] + centerx[1] && j >= center[1] + centery[0] && j < center[1] + centery[1])
-          regwindow.re[j * this.model_sz[0] + i] = Math.pow(0.001, 2) / (this.model_sz[0] * this.model_sz[1])
-      }
-    }
-    return regwindow
-  }
-  initArray() {
+  init_array() {
     const res = []
-    const l = { re: new Float32Array(this.model_sz[1] * this.model_sz[0]), im: new Float32Array(this.model_sz[1] * this.model_sz[0]) };
-    for (let i = 0; i < 3; i++)res.push(l)
+    for (let i = 0; i < 3; i++)res.push({ re: new Float32Array(this.model_sz[1] * this.model_sz[0]), im: new Float32Array(this.model_sz[1] * this.model_sz[0]) })
     return res
   }
-  /*compute_ADMM() {
-    const hf = this.initArray()
-    const zetaf = this.initArray()
-    const Sxx = this.channelMultiply(this.model_xf, this.model_xf, true);
-    const Sxy = this.channelMultiply(this.model_xf, this.labelsf, true);
-    const Sxxp = this.channelMultiply(this.model_xfp, this.model_xfp, true);
-    let mu = 100;
-    for (let i = 0; i < this.admm; i++) {
-      for (let j = 0; j < this.model_xf.length; j++) {
-        const sxxpp = this.addition(this.mul(Sxx[j], this.gamma_I), this.mul(Sxxp[j], this.gamma_H))
-        const hfzeta = this.subtraction(this.mul(hf[j], mu), zetaf[j])
-        const filtersx = this.multiply(this.filterf[j], sxxpp)
-        const filtersxy = this.addition(this.addition(Sxy[j], filtersx), hfzeta)
-        this.filterf[j] = this.divide(filtersxy, this.add(sxxpp, mu));
-        hf[j] = this.dft.fft2(this.divide(this.dft.ifft2(this.addition(this.mul(this.filterf[j], mu), zetaf[j])), this.add(this.regwindow, mu)));
-        zetaf[j] = this.addition(zetaf[j], this.mul(this.subtraction(this.filterf[j], hf[j]), mu));
-      }
-      mu = this.beta * mu;
-    }
-  }*/
   compute_ADMM() {
-    let l_f = this.initArray();
-    let h_f = this.initArray();
+    let l_f = this.init_array();
+    let h_f = this.init_array();
     let mu = 1;
     const T = this.model_sz[0] * this.model_sz[1];
     const S_xx = this.channelSum(this.channelMultiply(this.model_xf, this.model_xf, false));
-    this.filterf = this.initArray()
+    this.filterf = this.init_array()
     for (let i = 0; i < this.admm; i++) {
       const B = this.add(S_xx, T * mu);
       const S_lx = this.channelSum(this.channelMultiply(l_f, this.model_xf, false));
@@ -333,7 +289,7 @@ class ReCF {
         h_f[j] = this.dft.fft2(t);
         l_f[j] = this.addition(l_f[j], this.subtraction(this.mul(this.filterf[j], mu), h_f[j]));
       }
-      mu = 10;
+      mu *= 10;
     }
   }
 
@@ -341,9 +297,9 @@ class ReCF {
     const lp = { re: new Float32Array(this.model_sz[1] * this.model_sz[0]), im: new Float32Array(this.model_sz[1] * this.model_sz[0]) };
     for (let x = 0; x < output_sz.w; x++) {
       for (let y = 0; y < output_sz.h; y++) {
-        lp.re[y * this.output_sz[0] + x] = model.re[y * this.output_sz[0] + x];
         if ((x < output_sz.w / 4 || x > output_sz.w / 2) && (y < output_sz.h / 4 || y > output_sz.h / 2))
           lp.re[y * this.output_sz[0] + x] = 0;
+        else lp.re[y * this.output_sz[0] + x] = model.re[y * this.output_sz[0] + x];
       }
     }
     return lp;
