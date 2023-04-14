@@ -2,7 +2,7 @@ import DFT from './dft.js'
 
 export default class ReCF {
   constructor() {
-    this.model_sz = new Uint32Array([50, 50]);
+    this.model_sz = { width: 50, height: 50 };
     this.target_padding = 2;
     this.update_rate = 0.14;
     this.sigma_factor = 1 / 16;
@@ -79,7 +79,7 @@ export default class ReCF {
     return result;
   }
 
-  channel_multiply(a, b) {
+  channelMultiply(a, b) {
     let sum = new Float32Array(a[0].length);
     for (let i = 0; i < a.length; ++i) {
       const prod = this.multiply(a[i], b[i]);
@@ -89,10 +89,14 @@ export default class ReCF {
   }
 
   minMaxLoc(array) {
+    /*const maxTest = Math.max.apply(null,array)
+    console.log(maxTest)
+    const maxIndex = Math.indexOf(maxTest)
+    */
     let max = -999999, maxpos = { x: 0, y: 0 };
-    for (let x = 0; x < this.model_sz[0]; x++) {
-      for (let y = 0; y < this.model_sz[1]; y++) {
-        const val = array[(y * this.model_sz[0]) + x];
+    for (let x = 0; x < this.model_sz.width; x++) {
+      for (let y = 0; y < this.model_sz.height; y++) {
+        const val = array[(y * this.model_sz.width) + x];
         if (max < val) {
           max = val;
           maxpos.x = x;
@@ -122,7 +126,7 @@ export default class ReCF {
       extractionRegion.y = image.height
 
     const extract_region = this.preprocess(image, 1 / 255, -0.5, extractionRegion, this.channels);
-    return this.resize(extract_region, { width: extractionRegion.w, height: extractionRegion.h }, { width: this.model_sz[0], height: this.model_sz[1] });
+    return this.resize(extract_region, { width: extractionRegion.w, height: extractionRegion.h }, this.model_sz);
   }
 
   resize(input, src, dst, channels = 3) {
@@ -161,11 +165,11 @@ export default class ReCF {
 
   initialize(image, region) {
     this.target = { x: region.x + ~~(region.w / 2), y: region.y + ~~(region.h / 2), w: this.target_padding * region.w, h: this.target_padding * region.h }
-    this.dft = new DFT(this.model_sz[0], this.model_sz[1])
-    this.scale_factor = Math.sqrt(this.target.w * this.target.h / (this.model_sz[0] * this.model_sz[1]));
+    this.dft = new DFT(this.model_sz.width, this.model_sz.height)
+    this.scale_factor = Math.sqrt(this.target.w * this.target.h / (this.model_sz.width * this.model_sz.height));
     const resize_factor = (1 / this.scale_factor) * (1 / this.target_padding);
     this.model_xf = this.create_array()
-    this.labelsf = this.make_labels({ w: ~~(this.target.w * resize_factor), h: ~~(this.target.h * resize_factor) }, this.model_sz);
+    this.labelsf = this.make_labels(~~(this.target.w * resize_factor), ~~(this.target.h * resize_factor));
     this.filterf = this.create_array()
     this.window = this.hann_window();
     this.update(image);
@@ -191,15 +195,15 @@ export default class ReCF {
   detect(image) {
     const response = this.compute_response(image);
     const maxpos = this.minMaxLoc(response);
-    this.target.x += Math.round(this.shift_index(maxpos.x, this.model_sz[0]) * this.scale_factor / 2);
-    this.target.y += Math.round(this.shift_index(maxpos.y, this.model_sz[1]) * this.scale_factor / 2)
+    this.target.x += Math.round(this.shift_index(maxpos.x, this.model_sz.width) * this.scale_factor / 2);
+    this.target.y += Math.round(this.shift_index(maxpos.y, this.model_sz.height) * this.scale_factor / 2)
     console.log(response)
     console.log(maxpos)
   }
 
   compute_response(image) {
     const feature_vecf = this.compute_feature_vec(image);
-    const resp_dft = this.channel_multiply(feature_vecf, this.filterf);
+    const resp_dft = this.channelMultiply(feature_vecf, this.filterf);
     return this.dft.ifft2(resp_dft);
   }
 
@@ -217,29 +221,29 @@ export default class ReCF {
   }
 
   hann_window() {
-    const array = new Float32Array(this.model_sz[0] * this.model_sz[1])
-    const tvec = Array(this.model_sz[0] + this.target_padding)
-    for (let i = 0; i < Math.round((this.model_sz[0] + this.target_padding) / 2); i++) {
-      const hann = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i / (this.model_sz[0] + 1)));
+    const array = new Float32Array(this.model_sz.width * this.model_sz.height)
+    const tvec = Array(this.model_sz.width + this.target_padding)
+    for (let i = 0; i < Math.round((this.model_sz.width + this.target_padding) / 2); i++) {
+      const hann = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i / (this.model_sz.height + 1)));
       tvec[i] = hann
-      tvec[this.model_sz[0] + 1 - i] = hann
+      tvec[this.model_sz.width + 1 - i] = hann
     }
-    for (let k = 1; k < this.model_sz[0] + 1; ++k)
-      for (let j = 1; j < this.model_sz[0] + 1; ++j)
-        array[(k - 1) * this.model_sz[0] + (j - 1)] = tvec[k] * tvec[j];
+    for (let k = 1; k < this.model_sz.width + 1; ++k)
+      for (let j = 1; j < this.model_sz.width + 1; ++j)
+        array[(k - 1) * this.model_sz.width + (j - 1)] = tvec[k] * tvec[j];
     return array
   }
 
-  make_labels(target_size, model_sz) {
-    const labels = new Float32Array(model_sz[1] * model_sz[0])
-    const sigma = Math.sqrt(target_size.h * target_size.w) * this.sigma_factor;
+  make_labels(width,height) {
+    const labels = new Float32Array(this.model_sz.height * this.model_sz.width)
+    const sigma = Math.sqrt(height * width) * this.sigma_factor;
     const constant = -0.5 / Math.pow(sigma, 2);
-    for (let x = 0; x < this.model_sz[0]; x++) {
-      for (let y = 0; y < this.model_sz[1]; y++) {
-        const shift_x = this.shift_index(x, this.model_sz[0]);
-        const shift_y = this.shift_index(y, this.model_sz[1]);
+    for (let x = 0; x < this.model_sz.width; x++) {
+      for (let y = 0; y < this.model_sz.height; y++) {
+        const shift_x = this.shift_index(x, this.model_sz.width);
+        const shift_y = this.shift_index(y, this.model_sz.height);
         const value = Math.exp(constant * (Math.pow(shift_x, 2) + Math.pow(shift_y, 2)));
-        labels[y * this.model_sz[0] + x] = value;
+        labels[y * this.model_sz.width + x] = value;
       }
     }
     return this.dft.fft2(labels);
@@ -247,7 +251,7 @@ export default class ReCF {
 
   create_array() {
     const res = []
-    for (let i = 0; i < this.channels; i++)res.push(new Float32Array(this.model_sz[1] * this.model_sz[0]))
+    for (let i = 0; i < this.channels; i++)res.push(new Float32Array(this.model_sz.height * this.model_sz.width))
     return res
   }
 
@@ -256,12 +260,12 @@ export default class ReCF {
     let h_f = this.create_array();
     this.filterf = this.create_array()
     let mu = 1;
-    const T = this.model_sz[0] * this.model_sz[1];
-    const S_xx = this.channel_multiply(this.model_xf, this.model_xf);
+    const T = this.model_sz.width * this.model_sz.height;
+    const S_xx = this.channelMultiply(this.model_xf, this.model_xf);
     for (let i = 0; i < this.admm; i++) {
       const B = this.add(S_xx, T * mu);
-      const S_lx = this.channel_multiply(l_f, this.model_xf);
-      const S_hx = this.channel_multiply(h_f, this.model_xf);
+      const S_lx = this.channelMultiply(l_f, this.model_xf);
+      const S_hx = this.channelMultiply(h_f, this.model_xf);
       for (let j = 0; j < this.model_xf.length; j++) {
         const mlabelf = this.multiply(this.labelsf, this.model_xf[j]);
         const S_xxyf = this.multiply(S_xx, mlabelf);
@@ -270,7 +274,7 @@ export default class ReCF {
         const BS = this.divide(this.addition(this.subtraction(this.mul(S_xxyf, 1 / (T * mu)), this.mul(mS_lx, 1 / mu)), mS_hx), B);
         this.filterf[j] = this.subtraction(this.addition(this.subtraction(this.mul(mlabelf, 1 / (T * mu)), this.mul(l_f[j], 1 / mu)), h_f[j]), BS);
         const h = this.dft.ifft2(this.addition(this.mul(this.filterf[j], mu), l_f[j]));
-        const t = this.extract_tracked_region_spec(this.mul(h, (1 / mu)), this.model_sz);
+        const t = this.extract_tracked_region_spec(this.mul(h, (1 / mu)));
         h_f[j] = this.dft.fft2(t);
         l_f[j] = this.addition(l_f[j], this.subtraction(this.mul(this.filterf[j], mu), h_f[j]));
       }
@@ -278,16 +282,16 @@ export default class ReCF {
     }
   }
 
-  extract_tracked_region_spec(model, output_sz) {
-    const lp = new Float32Array(output_sz[1] * output_sz[0])
-    const crop_width = Math.ceil(output_sz.width / 4)
-    const crop_height = Math.ceil(output_sz.height / 4)
-    for (let x = 0; x < output_sz.width; x++) {
-      for (let y = 0; y < output_sz.height; y++) {
-        if ((x > crop_width + 1 && x < crop_width + 1 + output_sz.width / 2) && crop_height + 1 && y < crop_height + 1 + output_sz.height / 2)
-          lp[y * output_sz[0] + x] = model[y * output_sz[0] + x];
+  extract_tracked_region_spec(model) {
+    const lp = new Float32Array(this.model_sz.height * this.model_sz.width)
+    const crop_width = Math.ceil(this.model_sz.width / 4)
+    const crop_height = Math.ceil(this.model_sz.height / 4)
+    for (let x = 0; x < this.model_sz.width; x++) {
+      for (let y = 0; y < this.model_sz.height; y++) {
+        if ((x > crop_width + 1 && x < crop_width + 1 + this.model_sz.width / 2) && crop_height + 1 && y < crop_height + 1 + this.model_sz.height / 2)
+          lp[y * this.model_sz.width + x] = model[y * this.model_sz.width + x];
         else
-          lp[y * output_sz[0] + x] = 0;
+          lp[y * this.model_sz.width + x] = 0;
       }
     }
     return lp;
