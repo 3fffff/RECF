@@ -10,23 +10,19 @@
     width="800" height="500"></canvas>
   <input id="inputFile" type="file" multiple>
   <button id="Rect">getRect</button>
-  <script src='dft.js'></script>
-  <script src='ReCF.js'></script>
-  <script type="text/javascript">
+  <script type="module">
     "use strict";
+    import ReCF from './ReCF.js'
+    import { mulTest, addTest, subTest,channelMultiplyTest } from './tests.js'
+
     const cnv = document.getElementById('canvas')
     const ctx = document.getElementById('canvas').getContext('2d');
     let isInitialized = false;
     let imageSeqNumber = 0;
     let files = []
 
-    function newImageCallback(image, width, height) {
-      console.log("--------------");
-    }
-
     function handleFileSelect(e) {
       files = e.target.files;
-      console.log(files)
       loadImg(...files)
         .then((img) => timeout(img))
         .catch(err => console.error(err));
@@ -43,7 +39,6 @@
       });
     };
     const filter = new ReCF()
-    let init = false
     async function timeout(img) {
       for (let i = 0; i < img.length; i++) {
         setTimeout(function () {
@@ -52,19 +47,22 @@
           ctx.drawImage(img[i], 0, 0, img[i].width, img[i].height);
           console.time("All")
           const image = ctx.getImageData(0, 0, img[i].width, img[i].height)
-          if (!init) {
+          if (!filter.init) {
             const r = { x: 623, y: 299, w: 11, h: 38 }
-            const imgResize = ctx.getImageData(r.x,r.y,r.w,r.h) 
-            ctx.putImageData(imgResize, 0, 0);
             filter.initialize(image, r)
-            init = true
-          } else filter.updateImpl(image)
+          } else filter.track(image)
           console.timeEnd("All")
-          ctx.strokeRect(filter.target.x, filter.target.y, filter.target.w, filter.target.h)
+          ctx.strokeRect(filter.boundingBox.x, filter.boundingBox.y, filter.boundingBox.w, filter.boundingBox.h)
         }, i, i)
       }
     }
     document.getElementById("inputFile").addEventListener("change", handleFileSelect)
+    document.getElementById("Rect").addEventListener("click", () => {
+      mulTest()
+      addTest()
+      subTest()
+      channelMultiplyTest()
+    })
   </script>
   </div>
 </body>
