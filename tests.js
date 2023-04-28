@@ -1,4 +1,4 @@
-import ReCF from './ReCF_real.js'
+import ReCF from './ReCF.js'
 
 export function mulTest() {
   const cf = new ReCF()

@@ -2,9 +2,9 @@ import DFT from './dft.js'
 
 export default class ReCF {
   constructor() {
-    this.model_sz = { width: 50, height: 50 };
+    this.model_sz = { width: 25, height: 25 };
     this.target_padding = 2.0;
-    this.update_rate = 0.14;
+    this.update_rate = 0.014;
     this.sigma_factor = 1.0 / 16.0;
     this.admm = 2;
     this.init = false;
@@ -33,90 +33,75 @@ export default class ReCF {
     return result;
   }
 
-  multiply(matrix1, matrix2, conj = false) {
-    let result = { re: new Float32Array(matrix1.re.length), im: new Float32Array(matrix1.re.length) };
-    for (let r = 0; r < matrix1.re.length; r++) result.re[r] = matrix1.re[r] * matrix2.re[r]
+  multiply(dataA, dataB) {
+    let result = { re: new Float32Array(dataA.re.length), im: new Float32Array(dataA.re.length) };
+    for (let r = 0; r < dataA.re.length; r++) result.re[r] = dataA.re[r] * dataB.re[r]
     return result;
   }
 
-  mulSpectrums(matrix1, matrix2) {
-    let result = { re: new Float32Array(matrix1.re.length), im: new Float32Array(matrix1.re.length) };
+  mulSpectrums(dataA, dataB, conjB) {
+    let result = { re: new Float32Array(dataA.re.length), im: new Float32Array(dataA.re.length) };
     const rows = this.model_sz.width, cols = this.model_sz.height;
-    const j0 = 1;
+    const j0 = 0;
     const j1 = cols - (cols % 2 == 0);
-    const width = width
-    const eps = 0.0000000001; // prevent div0 problems
-
-    for (let k = 0; k < (cols % 2 ? 1 : 2); k++) {
-      let kcols = 0
-      if (k == 1)
-        kcols += cols;
-      result.re[kcols * cols + 0] = matrix.re[kcols * cols + 0] * (matrix2.re[kcols * cols + 0] + eps);
-      if (rows % 2 == 0)
-        result.re[kcols * cols + (rows - 1) * width] = matrix.re[kcols * cols + (rows - 1) * width] * (matrix2.re[kcols * cols + (rows - 1) * width] + eps);
-      if (!conjB)
-        for (j = 1; j <= rows - 2; j += 2) {
-          result.re[kcols * cols + j * width] = matrix1.re[kcols * cols + j * width] * matrix2.re[kcols * cols + j * width] +
-            matrix1.im[kcols * cols + j * width] * matrix2.im[kcols * cols + j * width];
-
-          result.im[kcols * cols + j * width] = matrix1.im[kcols * cols + j * width] * matrix2.re[kcols * cols + j * width] -
-            matrix1.re[kcols * cols + j * width] * matrix2.im[kcols * cols + j * width];
-        }
+    for (let k = 0; k < 2; k++) {
+      const kcols = k == 0 ? 0 : cols
+      for (let j = 0; j < rows; j++) {
+        const a_re = dataA.re[kcols + j], a_im = dataA.im[kcols + j];
+        const b_re = dataB.re[kcols + j], b_im = dataB.im[kcols + j];
+        if (conjB) b_im = -b_im;
+        result.re[kcols + j] = a_re * b_re - a_im * b_im;
+        result.im[kcols + j] = a_re * b_im + a_im * b_re;
+      }
     }
 
-    for (let i = 0; i < width; i++) {
-      if (!conjB)
-        for (let j = j0; j < j1; j += 2) {
-          result.re[i * width + j] = (matrix1.re[i * width + j] * matrix2.re[i * width + j] + matrix1.im[i * width + j] * matrix2.im[i * width + j]);
-          result.im[i * width + j] = (matrix1.im[i * width + j] * matrix2.re[i * width + j] - matrix1.re[i * width + j] * matrix2.im[i * width + j]);
-        }
+    for (let i = 0; i < rows; i++) {
+      for (let j = j0; j < j1; j++) {
+        const a_re = dataA.re[i * rows + j], a_im = dataA.im[i * rows + j];
+        const b_re = dataB.re[i * rows + j], b_im = dataB.im[i * rows + j];
+        if (conjB) b_im = -b_im;
+        result.re[i * rows + j] = a_re * b_re - a_im * b_im;
+        result.im[i * rows + j] = a_re * b_im + a_im * b_re;
+      }
     }
+    return result
   }
 
-  divSpectrums(matrix1, matrix2, conjB) {
-    let result = { re: new Float32Array(matrix1.re.length), im: new Float32Array(matrix1.re.length) };
+  divSpectrums(dataA, dataB, conjB) {
+    let result = { re: new Float32Array(dataA.re.length), im: new Float32Array(dataA.re.length) };
     const rows = this.model_sz.width, cols = this.model_sz.height;
-    const ncols = cols * cn;
-    const j0 = cn == 1;
-    const j1 = ncols - (cols % 2 == 0 && cn == 1);
-    const width = width
+    const j0 = 0;
+    const j1 = cols - (cols % 2 == 0);
+    const width = this.model_sz.width
     const eps = 0.0000000001; // prevent div0 problems
 
-    for (let k = 0; k < (cols % 2 ? 1 : 2); k++) {
+    for (let k = 0; k < 2; k++) {
       let kcols = 0
       if (k == 1)
         kcols += cols;
-      result.re[kcols * cols + 0] = matrix.re[kcols * cols + 0] / (matrix2.re[kcols * cols + 0] + eps);
+      result.re[kcols * cols + 0] = dataA.re[kcols * cols + 0] / (dataB.re[kcols * cols + 0] + eps);
       if (rows % 2 == 0)
-        result.re[kcols * cols + (rows - 1) * width] = matrix.re[kcols * cols + (rows - 1) * width] / (matrix2.re[kcols * cols + (rows - 1) * width] + eps);
-      //if (!conjB)
-      for (j = 1; j <= rows - 2; j += 2) {
-        const denom = matrix2.re[kcols * cols + j * width] * matrix2.re[kcols * cols + j * width] +
-          matrix2.re[kcols * cols + (j + 1) * width] * matrix2.im[kcols * cols + j * width] + eps;
-
-        const re = matrix1.re[kcols * cols + j * width] * matrix2.re[kcols * cols + j * width] +
-          matrix1.im[kcols * cols + j * width] * matrix2.im[kcols * cols + j * width];
-
-        const im = matrix1.im[kcols * cols + j * width] * matrix2.re[kcols * cols + j * width] -
-          matrix1.re[kcols * cols + j * width] * matrix2.im[kcols * cols + j * width];
-
-        result.re[kcols * cols + j * width] = re / denom;
-        result.im[kcols * cols + j * width] = im / denom;
-        //  }
-      }
-
-      for (let i = 0; i < width; i++) {
-        //if (!conjB)
-        for (let j = j0; j < j1; j += 2) {
-          const denom = (matrix2.re[i * width + j] * matrix2.re[i * width + j]
-            + matrix2.re[i * width + j + 1] * matrix2.re[i * width + j + 1] + eps);
-          const re = (matrix1.re[i * width + j] * matrix2.re[i * width + j] + matrix1.im[i * width + j] * matrix2.im[i * width + j]);
-          const im = (matrix1.im[i * width + j] * matrix2.re[i * width + j] - matrix1.re[i * width + j] * matrix2.im[i * width + j]);
-          result.re[i * width + j] = re / denom;
-          result.im[i * width + j] = im / denom;
-        }
+        result.re[kcols * cols + (rows - 1) * width] = dataA.re[kcols * cols + (rows - 1) * width] / (dataB.re[kcols * cols + (rows - 1) * width] + eps);
+      for (let j = 1; j < rows; j++) {
+        const a_re = dataA.re[kcols * cols + j * width], a_im = dataA.im[kcols * cols + j * width];
+        const b_re = dataB.re[kcols * cols + j * width], b_im = dataB.im[kcols * cols + j * width];
+        const denom = b_re * b_re + b_re * b_re
+        if (conjB) b_im = -b_im;
+        result.re[kcols * cols + j * width] = (a_re * b_re + a_im * b_im) / (denom + eps);
+        result.im[kcols * cols + j * width] = (a_re * b_im - a_im * b_re) / (denom + eps);
       }
     }
+    for (let i = 0; i < width; i++) {
+      for (let j = j0; j < j1; j++) {
+        const a_re = dataA.re[i * rows + j], a_im = dataA.im[i * rows + j];
+        const b_re = dataB.re[i * rows + j], b_im = dataB.im[i * rows + j];
+        const denom = b_re * b_re + b_re * b_re
+        if (conjB) b_im = -b_im;
+        result.re[i * rows + j] = (a_re * b_re + a_im * b_im) / (denom + eps);
+        result.im[i * rows + j] = (a_re * b_im - a_im * b_re) / (denom + eps);
+      }
+    }
+    return result
   }
 
   add(matrix, num) {
@@ -165,14 +150,6 @@ export default class ReCF {
   }
 
   channelMultiply(a, b, conj) {
-    const sum = [];
-    if (b instanceof Array)
-      for (let i = 0; i < a.length; ++i)sum[i] = this.multiply(a[i], b[i], conj);
-    else for (let i = 0; i < a.length; ++i)sum[i] = this.multiply(a[i], b, conj);
-    return sum;
-  }
-
-  channelMulSpec(a, b, conj) {
     const sum = [];
     if (b instanceof Array)
       for (let i = 0; i < a.length; ++i)sum[i] = this.mulSpectrums(a[i], b[i], conj);
@@ -294,7 +271,7 @@ export default class ReCF {
 
   compute_response(image) {
     const feature_vecf = this.compute_feature_vec(image);
-    const resp_dft = this.channelSum(this.channelMulSpec(feature_vecf, this.filterf, false));
+    const resp_dft = this.channelSum(this.channelMultiply(feature_vecf, this.filterf, false));
     return this.dft.ifft2(resp_dft);
   }
 
@@ -357,11 +334,11 @@ export default class ReCF {
       const S_lx = this.channelSum(this.channelMultiply(l_f, this.model_xf, false));
       const S_hx = this.channelSum(this.channelMultiply(h_f, this.model_xf, false));
       for (let j = 0; j < this.model_xf.length; j++) {
-        const mlabelf = this.multiply(this.labelsf, this.model_xf[j]);
-        const S_xxyf = this.multiply(S_xx, mlabelf);
-        const mS_lx = this.multiply(S_lx, this.model_xf[j]);
-        const mS_hx = this.multiply(S_hx, this.model_xf[j]);
-        const ghj = this.divide(this.addition(this.subtraction(this.mul(S_xxyf, 1 / (T * mu)), this.mul(mS_lx, 1 / mu)), mS_hx), B);
+        const mlabelf = this.mulSpectrums(this.labelsf, this.model_xf[j]);
+        const S_xxyf = this.mulSpectrums(S_xx, mlabelf);
+        const mS_lx = this.mulSpectrums(S_lx, this.model_xf[j]);
+        const mS_hx = this.mulSpectrums(S_hx, this.model_xf[j]);
+        const ghj = this.divSpectrums(this.addition(this.subtraction(this.mul(S_xxyf, 1 / (T * mu)), this.mul(mS_lx, 1 / mu)), mS_hx), B);
         this.filterf[j] = this.subtraction(this.addition(this.subtraction(this.mul(mlabelf, 1 / (T * mu)), this.mul(l_f[j], 1 / mu)), h_f[j]), ghj);
         const h = this.dft.ifft2(this.addition(this.mul(this.filterf[j], mu), l_f[j]));
         const t = this.extractTrackedRegionSpec(this.mul(h, (1 / mu)), this.model_sz);
