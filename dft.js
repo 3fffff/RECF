@@ -1,6 +1,5 @@
 export default class DFT {
-  constructor(M, N, real) {
-    this.real = real
+  constructor(M, N) {
     this.M = M
     this.N = N
     this.wM = this.cosSinTable(M)
@@ -65,7 +64,7 @@ export default class DFT {
     return table
   }
 
-  fft2Core(sig, inverse = false, real = false) {
+  fft2Core(sig, inverse = false) {
     let signal = sig.constructor === Float32Array ? { re: sig, im: new Float32Array(sig.length) } : sig
     let c_signal = { re: new Float32Array(this.M * this.N), im: new Float32Array(this.M * this.N) };
     let F = { re: new Float32Array(this.M * this.N), im: new Float32Array(this.M * this.N) };
@@ -105,15 +104,15 @@ export default class DFT {
         F.im[x] = im;
       }
     }
-    return real ? F.re : F
+    return F
   }
 
   fft2(signal) {
-    return this.fft2Core(signal, false, this.real)
+    return this.fft2Core(signal, false)
   }
 
   ifft2(signal) {
-    return this.fft2Core(signal, true, this.real)
+    return this.fft2Core(signal, true)
   }
 
   test() {
