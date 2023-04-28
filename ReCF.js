@@ -38,7 +38,7 @@ export default class ReCF {
     for (let r = 0; r < dataA.re.length; r++) result.re[r] = dataA.re[r] * dataB.re[r]
     return result;
   }
-
+//conjB=false convolution either correlation
   mulSpectrums(dataA, dataB, conjB) {
     let result = { re: new Float32Array(dataA.re.length), im: new Float32Array(dataA.re.length) };
     const rows = this.model_sz.width, cols = this.model_sz.height;
@@ -74,21 +74,18 @@ export default class ReCF {
     const j1 = cols - (cols % 2 == 0);
     const width = this.model_sz.width
     const eps = 0.0000000001; // prevent div0 problems
-
     for (let k = 0; k < 2; k++) {
-      let kcols = 0
-      if (k == 1)
-        kcols += cols;
-      result.re[kcols * cols + 0] = dataA.re[kcols * cols + 0] / (dataB.re[kcols * cols + 0] + eps);
+      const kcols = k == 0 ? 0 : cols
+      result.re[kcols + 0] = dataA.re[kcols + 0] / (dataB.re[kcols + 0] + eps);
       if (rows % 2 == 0)
-        result.re[kcols * cols + (rows - 1) * width] = dataA.re[kcols * cols + (rows - 1) * width] / (dataB.re[kcols * cols + (rows - 1) * width] + eps);
+        result.re[kcols + (rows - 1) * rows] = dataA.re[kcols + (rows - 1) * rows] / (dataB.re[kcols + (rows - 1) * rows] + eps);
       for (let j = 1; j < rows; j++) {
-        const a_re = dataA.re[kcols * cols + j * width], a_im = dataA.im[kcols * cols + j * width];
-        const b_re = dataB.re[kcols * cols + j * width], b_im = dataB.im[kcols * cols + j * width];
+        const a_re = dataA.re[kcols + j * rows], a_im = dataA.im[kcols + j * rows];
+        const b_re = dataB.re[kcols + j * rows], b_im = dataB.im[kcols + j * rows];
         const denom = b_re * b_re + b_re * b_re
         if (conjB) b_im = -b_im;
-        result.re[kcols * cols + j * width] = (a_re * b_re + a_im * b_im) / (denom + eps);
-        result.im[kcols * cols + j * width] = (a_re * b_im - a_im * b_re) / (denom + eps);
+        result.re[kcols + j * width] = (a_re * b_re + a_im * b_im) / (denom + eps);
+        result.im[kcols + j * width] = (a_re * b_im - a_im * b_re) / (denom + eps);
       }
     }
     for (let i = 0; i < width; i++) {
