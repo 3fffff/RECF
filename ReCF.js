@@ -4,7 +4,7 @@ export default class ReCF {
   constructor() {
     this.model_sz = { width: 50, height: 50 };
     this.target_padding = 2.0;
-    this.update_rate = 0.014;
+    this.update_rate = 0.14;
     this.sigma_factor = 1.0 / 16.0;
     this.admm = 2;
     this.init = false;
@@ -42,7 +42,7 @@ export default class ReCF {
   mulSpectrums(dataA, dataB, conjB) {
     let result = { re: new Float32Array(dataA.re.length), im: new Float32Array(dataA.re.length) };
     const rows = this.model_sz.width, cols = this.model_sz.height;
-    const j0 = 0;
+    const j0 = 1;
     const j1 = cols - (cols % 2 == 0);
     for (let k = 0; k < 2; k++) {
       const kcols = k == 0 ? 0 : cols
@@ -55,7 +55,7 @@ export default class ReCF {
       }
     }
 
-    for (let i = 0; i < rows; i++) {
+    for (let i = 0; i < rows - 1; i++) {
       for (let j = j0; j < j1; j++) {
         const a_re = dataA.re[i * rows + j], a_im = dataA.im[i * rows + j];
         let b_re = dataB.re[i * rows + j], b_im = dataB.im[i * rows + j];
@@ -70,27 +70,26 @@ export default class ReCF {
   divSpectrums(dataA, dataB, conjB) {
     let result = { re: new Float32Array(dataA.re.length), im: new Float32Array(dataA.re.length) };
     const rows = this.model_sz.width, cols = this.model_sz.height;
-    const j0 = 0;
+    const j0 = 1;
     const j1 = cols - (cols % 2 == 0);
-    const width = this.model_sz.width
     const eps = 0.0000000001; // prevent div0 problems
     for (let k = 0; k < 2; k++) {
       const kcols = k == 0 ? 0 : cols
       for (let j = 0; j < rows; j++) {
-        const a_re = dataA.re[kcols + j * rows], a_im = dataA.im[kcols + j * rows];
-        let b_re = dataB.re[kcols + j * rows], b_im = dataB.im[kcols + j * rows];
-        const denom = b_re * b_re + b_re * b_re
+        const a_re = dataA.re[kcols + j], a_im = dataA.im[kcols + j];
+        let b_re = dataB.re[kcols + j], b_im = dataB.im[kcols + j];
         if (conjB) b_im = -b_im;
-        result.re[kcols + j * width] = (a_re * b_re + a_im * b_im) / (denom + eps);
-        result.im[kcols + j * width] = (a_re * b_im - a_im * b_re) / (denom + eps);
+        const denom = b_re * b_re + b_re * b_re
+        result.re[kcols + j] = (a_re * b_re + a_im * b_im) / (denom + eps);
+        result.im[kcols + j] = (a_re * b_im - a_im * b_re) / (denom + eps);
       }
     }
-    for (let i = 0; i < width; i++) {
+    for (let i = 0; i < rows; i++) {
       for (let j = j0; j < j1; j++) {
         const a_re = dataA.re[i * rows + j], a_im = dataA.im[i * rows + j];
         let b_re = dataB.re[i * rows + j], b_im = dataB.im[i * rows + j];
-        const denom = b_re * b_re + b_re * b_re
         if (conjB) b_im = -b_im;
+        const denom = b_re * b_re + b_re * b_re
         result.re[i * rows + j] = (a_re * b_re + a_im * b_im) / (denom + eps);
         result.im[i * rows + j] = (a_re * b_im - a_im * b_re) / (denom + eps);
       }
@@ -248,7 +247,7 @@ export default class ReCF {
 
   computeFeature(patch) {
     const feature_data = this.extractTrackedRegion(patch, this.target);
-    return this.fft2(feature_data, false);
+    return this.fft2(feature_data);
   }
 
   detect(image) {
@@ -263,8 +262,8 @@ export default class ReCF {
   }
 
   computeResponse(image) {
-    const feature_vecf = this.computeFeature(image);
-    const resp_dft = this.channelSum(this.channelMultiply(feature_vecf, this.filter, true));
+    const feature_vec = this.computeFeature(image);
+    const resp_dft = this.channelSum(this.channelMultiply(feature_vec, this.filter, true));
     return this.dft.ifft2(resp_dft);
   }
 
@@ -280,17 +279,24 @@ export default class ReCF {
   shiftIndex(index, length) {
     return (index > length / 2) ? -length + index : index;
   }
+
   hannWindow() {
     const array = { re: new Float32Array(this.model_sz.width * this.model_sz.height), im: new Float32Array(this.model_sz.width * this.model_sz.height) }
-    const tvec = Array(this.model_sz.width + this.target_padding)
-    for (let i = 0; i < Math.round((this.model_sz.width + this.target_padding) / 2); i++) {
-      const hann = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i / (this.model_sz.width + 1)));
-      tvec[i] = hann
-      tvec[this.model_sz.width + 1 - i] = hann
+    const vecx = Array(this.model_sz.width + this.target_padding)
+    const vecy = Array(this.model_sz.height + this.target_padding)
+    for (let i = 1; i < Math.round((this.model_sz.width + this.target_padding) / 2); i++) {
+      const x = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i / (this.model_sz.width + 1)));
+      vecx[i] = x
+      vecx[this.model_sz.width + this.target_padding - 1 - i] = x
     }
-    for (let k = 1; k < this.model_sz.width + 1; ++k)
-      for (let j = 1; j < this.model_sz.width + 1; ++j)
-        array.re[(k - 1) * this.model_sz.width + (j - 1)] = tvec[k] * tvec[j];
+    for (let i = 1; i < Math.round((this.model_sz.height + this.target_padding) / 2); i++) {
+      const y = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i / (this.model_sz.height + 1)));
+      vecy[i] = y
+      vecy[this.model_sz.height + this.target_padding - 1 - i] = y
+    }
+    for (let x = 1; x < this.model_sz.width + this.target_padding - 1; x++)
+      for (let y = 1; y < this.model_sz.height + this.target_padding - 1; y++)
+        array.re[(y - 1) * this.model_sz.width + (x - 1)] = vecx[x] * vecy[y];
     return array
   }
 
@@ -334,7 +340,7 @@ export default class ReCF {
         const divPart = this.divSpectrums(this.addition(this.subtraction(this.mul(S_xxyf, 1 / (T * mu)), this.mul(mS_lx, 1 / mu)), mS_hx), B, false);
         this.filter[j] = this.subtraction(this.addition(this.subtraction(this.mul(mlabelf, 1 / (T * mu)), this.mul(l_f[j], 1 / mu)), h_f[j]), divPart);
         const h = this.dft.ifft2(this.addition(this.mul(this.filter[j], mu), l_f[j]));
-        const t = this.extractTrackedRegionSpec(this.mul(h, (1 / mu)), this.model_sz);
+        const t = this.extractTrackedRegionSpec(this.mul(h, (1 / mu)));
         h_f[j] = this.dft.fft2(t);
         l_f[j] = this.addition(l_f[j], this.subtraction(this.mul(this.filter[j], mu), h_f[j]));
       }
@@ -344,17 +350,13 @@ export default class ReCF {
 
   extractTrackedRegionSpec(model) {
     const lp = { re: new Float32Array(this.model_sz.height * this.model_sz.width), im: new Float32Array(this.model_sz.height * this.model_sz.width) };
-    const width = Math.ceil(this.model_sz.width / 4)
-    const height = Math.ceil(this.model_sz.height / 4)
-    for (let x = 0; x < this.model_sz.width; x++) {
-      for (let y = 0; y < this.model_sz.height; y++) {
-        if ((x > width + 1 && x < width + 1 + this.model_sz.width / 2) && height + 1 && y < height + 1 + this.model_sz.height / 2) {
+    const width = Math.ceil(this.model_sz.width)
+    const height = Math.ceil(this.model_sz.height)
+    for (let x = 0; x < this.width; x++) {
+      for (let y = 0; y < this.height; y++) {
+        if ((x > Math.ceil(width) / 4 && x < Math.ceil(width / 4) + width / 2) && (y > Math.ceil(height / 4) && y < Math.ceil(height / 4) + height / 2)) {
           lp.re[y * this.model_sz.width + x] = model.re[y * this.model_sz.width + x];
           lp.im[y * this.model_sz.width + x] = model.im[y * this.model_sz.width + x];
-        }
-        else {
-          lp.re[y * this.model_sz[0] + x] = 0;
-          lp.im[y * this.model_sz[0] + x] = 0;
         }
       }
     }
