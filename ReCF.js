@@ -160,7 +160,7 @@ export default class ReCF {
         if (max < val) {
           max = val;
           pos.x = x;
-          pos.y = y;
+          pos.y = this.model_sz.width - y;
         }
       }
     }
