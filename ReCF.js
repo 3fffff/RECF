@@ -42,8 +42,6 @@ export default class ReCF {
   mulSpectrums(dataA, dataB, conjB) {
     let result = { re: new Float32Array(dataA.re.length), im: new Float32Array(dataA.re.length) };
     const rows = this.model_sz.width, cols = this.model_sz.height;
-    const j0 = 1;
-    const j1 = cols - (cols % 2 == 0);
     for (let k = 0; k < 2; k++) {
       const kcols = k == 0 ? 0 : cols
       for (let j = 0; j < rows; j++) {
@@ -54,9 +52,8 @@ export default class ReCF {
         result.im[kcols + j] = a_re * b_im + a_im * b_re;
       }
     }
-
-    for (let i = 0; i < rows - 1; i++) {
-      for (let j = j0; j < j1; j++) {
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) {
         const a_re = dataA.re[i * rows + j], a_im = dataA.im[i * rows + j];
         let b_re = dataB.re[i * rows + j], b_im = dataB.im[i * rows + j];
         if (conjB) b_im = -b_im;
@@ -70,8 +67,6 @@ export default class ReCF {
   divSpectrums(dataA, dataB, conjB) {
     let result = { re: new Float32Array(dataA.re.length), im: new Float32Array(dataA.re.length) };
     const rows = this.model_sz.width, cols = this.model_sz.height;
-    const j0 = 1;
-    const j1 = cols - (cols % 2 == 0);
     const eps = 0.0000000001; // prevent div0 problems
     for (let k = 0; k < 2; k++) {
       const kcols = k == 0 ? 0 : cols
@@ -85,7 +80,7 @@ export default class ReCF {
       }
     }
     for (let i = 0; i < rows; i++) {
-      for (let j = j0; j < j1; j++) {
+      for (let j = 0; j < cols; j++) {
         const a_re = dataA.re[i * rows + j], a_im = dataA.im[i * rows + j];
         let b_re = dataB.re[i * rows + j], b_im = dataB.im[i * rows + j];
         if (conjB) b_im = -b_im;
@@ -173,18 +168,11 @@ export default class ReCF {
   }
 
   extractTrackedRegion(image, region) {
-    const extractionRegion = {
-      x: region.x - ~~(region.w / 2.0),
-      y: region.y - ~~(region.h / 2.0),
-      w: region.w,
-      h: region.h
-    };
-
     //make sure the patch is not completely outside the image
-    if (extractionRegion.x + extractionRegion.w > 0 && extractionRegion.y + extractionRegion.h > 0 &&
-      extractionRegion.x < image.width && extractionRegion.y < image.height) {
-      const real_patch = this.preprocess(image, 1 / 255, -0.5, extractionRegion);
-      return this.resize(real_patch, { width: extractionRegion.w, height: extractionRegion.h }, this.model_sz);
+    if (region.x + region.w > 0 && region.y + region.h > 0 &&
+      region.x < image.width && region.y < image.height) {
+      const real_patch = this.preprocess(image, 1 / 255, -0.5, region);
+      return this.resize(real_patch, { width: region.w, height: region.h }, this.model_sz);
     } else throw new Error("no extract image")
   }
 
@@ -218,12 +206,11 @@ export default class ReCF {
 
   track(image) {
     this.detect(image);
-    this.boundingBox = { x: this.target.x, y: this.target.y, w: this.target.w / this.target_padding, h: this.target.h / this.target_padding }
     this.update(image);
   }
 
   initialize(image, region) {
-    this.target = { x: region.x + ~~(region.w / 2), y: region.y + ~~(region.h / 2), w: this.target_padding * region.w, h: this.target_padding * region.h }
+    this.target = { x: region.x - ~~(region.w / 2), y: region.y - ~~(region.h / 2), w: this.target_padding * region.w, h: this.target_padding * region.h }
     this.dft = new DFT(this.model_sz.width, this.model_sz.height, false)
     this.scale_factor = Math.sqrt(this.target.w * this.target.h / (this.model_sz.width * this.model_sz.height));
     const resize_factor = (1.0 / this.scale_factor) * (1.0 / this.target_padding);
@@ -232,7 +219,7 @@ export default class ReCF {
     this.filter = this.init_array()
     this.window = this.hannWindow();
     this.update(image);
-    this.boundingBox = { x: this.target.x, y: this.target.y, w: this.target.w / this.target_padding, h: this.target.h / this.target_padding }
+    this.boundingBox = region
     this.init = true
   }
 
@@ -252,13 +239,17 @@ export default class ReCF {
 
   detect(image) {
     const response = this.computeResponse(image);
-    //console.log(response)
     const maxpos = this.minMaxLoc(response.re);
     console.log(maxpos)
     //region w or h
-    this.target.x += Math.round(this.shiftIndex(maxpos.x, this.model_sz.width) * this.scale_factor / 2);
-    this.target.y += Math.round(this.shiftIndex(maxpos.y, this.model_sz.height) * this.scale_factor / 2)
+    const position = { x: Math.round(this.shiftIndex(maxpos.x, this.model_sz.width) * this.scale_factor), y: Math.round(this.shiftIndex(maxpos.y, this.model_sz.height) * this.scale_factor) }
+    console.log(position)
+    this.target.x += position.x
+    this.target.y += position.y
     console.log(this.target)
+    this.boundingBox.x += position.x
+    this.boundingBox.y += position.y
+    console.log(this.boundingBox)
   }
 
   computeResponse(image) {

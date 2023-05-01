@@ -53,6 +53,7 @@
           } else filter.track(image)
           console.timeEnd("All")
           ctx.strokeRect(filter.boundingBox.x, filter.boundingBox.y, filter.boundingBox.w, filter.boundingBox.h)
+          ctx.strokeRect(filter.target.x, filter.target.y, filter.target.w, filter.target.h)
         }, i, i)
       }
     }
