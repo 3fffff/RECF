@@ -147,8 +147,7 @@ export default class ReCF {
 
   channelSum(a) {
     let sum = { re: new Float32Array(a[0].re.length), im: new Float32Array(a[0].re.length) };
-    for (let i = 0; i < a.length; ++i)
-      sum = this.addition(sum, a[i]);
+    for (let i = 0; i < a.length; ++i)sum = this.addition(sum, a[i]);
     return sum;
   }
 
@@ -217,14 +216,14 @@ export default class ReCF {
     this.model_xf = this.init_array()
     this.labels = this.makeLabels(~~(this.target.w * resize_factor), ~~(this.target.h * resize_factor));
     this.filter = this.init_array()
-    this.window = this.hannWindow();
+    this.window = this.hann();
     this.currentScaleFactor = 1.0
     const scale_exp = 2;
     this.scaleFactors = Math.exp(scale_step, scale_exp);
-    this.min_scale_factorX = Math.exp(scale_step, Math.ceil(Math.log(Math.max(5 / this.model_sz.width)) / Math.log(scale_step)));
-    this.min_scale_factorY = Math.exp(scale_step, Math.ceil(Math.log(Math.max(5 / this.model_sz.height)) / Math.log(scale_step)));
-    this.max_scale_factorX = Math.exp(scale_step, Math.floor(Math.log(Math.min(image.width / base_target_sz)) / Math.log(scale_step)));
-    this.max_scale_factorY = Math.exp(scale_step, Math.floor(Math.log(Math.min(image.height / base_target_sz)) / Math.log(scale_step)));
+    this.minScaleFactorX = Math.exp(scale_step, Math.ceil(Math.log(Math.max(5 / this.model_sz.width)) / Math.log(scale_step)));
+    this.minScaleFactorY = Math.exp(scale_step, Math.ceil(Math.log(Math.max(5 / this.model_sz.height)) / Math.log(scale_step)));
+    this.maxScaleFactorX = Math.exp(scale_step, Math.floor(Math.log(Math.min(image.width / base_target_sz)) / Math.log(scale_step)));
+    this.maxScaleFactorY = Math.exp(scale_step, Math.floor(Math.log(Math.min(image.height / base_target_sz)) / Math.log(scale_step)));
     this.update(image);
     this.boundingBox = region
     this.init = true
@@ -278,7 +277,7 @@ export default class ReCF {
     return (index > length / 2) ? -length + index : index;
   }
 
-  hannWindow() {
+  hann() {
     const array = { re: new Float32Array(this.model_sz.width * this.model_sz.height), im: new Float32Array(this.model_sz.width * this.model_sz.height) }
     const vecx = Array(this.model_sz.width + this.target_padding)
     const vecy = Array(this.model_sz.height + this.target_padding)
