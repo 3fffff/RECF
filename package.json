@@ -1,0 +1,15 @@
+{
+  "name": "recfjs",
+  "version": "1.0.0",
+  "description": "correlation filter",
+  "main": "ReCF.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "webpack": "^5.75.0",
+    "webpack-cli": "^5.0.1"
+  }
+}
