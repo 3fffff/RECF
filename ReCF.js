@@ -1,8 +1,8 @@
 import DFT from './dft.js'
 
-export default class ReCF {
-  constructor() {
-    this.model_sz = { width: 50, height: 50 };
+export class ReCF {
+  constructor(width = 50, height = 50) {
+    this.model_sz = { width: width, height: height };
     this.target_padding = 2.0;
     this.update_rate = 0.14;
     this.sigma_factor = 1.0 / 16.0;
@@ -209,6 +209,7 @@ export default class ReCF {
   }
 
   initialize(image, region) {
+    const scale_exp = 2, scale_step = 1, base_target_sz = 1;
     this.target = { x: region.x - ~~(region.w / 2), y: region.y - ~~(region.h / 2), w: this.target_padding * region.w, h: this.target_padding * region.h }
     this.dft = new DFT(this.model_sz.width, this.model_sz.height, false)
     this.scale_factor = Math.sqrt(this.target.w * this.target.h / (this.model_sz.width * this.model_sz.height));
@@ -218,7 +219,6 @@ export default class ReCF {
     this.filter = this.init_array()
     this.window = this.hann();
     this.currentScaleFactor = 1.0
-    const scale_exp = 2;
     this.scaleFactors = Math.exp(scale_step, scale_exp);
     this.minScaleFactorX = Math.exp(scale_step, Math.ceil(Math.log(Math.max(5 / this.model_sz.width)) / Math.log(scale_step)));
     this.minScaleFactorY = Math.exp(scale_step, Math.ceil(Math.log(Math.max(5 / this.model_sz.height)) / Math.log(scale_step)));

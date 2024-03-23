@@ -4,12 +4,13 @@
   "description": "correlation filter",
   "main": "ReCF.js",
   "scripts": {
+    "devbuild":".\\node_modules\\.bin\\esbuild ReCF.js --bundle --outfile=dist/debug.js --global-name=recf --minify --sourcemap",
+    "build":".\\node_modules\\.bin\\esbuild ReCF.js --bundle --outfile=dist/bundle.js --global-name=recf --minify",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "webpack": "^5.75.0",
-    "webpack-cli": "^5.0.1"
+  "devDependencies": {
+    "esbuild": "0.20.2"
   }
 }

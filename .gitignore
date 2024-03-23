@@ -1,2 +1,6 @@
-dist
+*.js.map
+debug.js
+out.js
+bundle.js
+package-lock.json
 node_modules
