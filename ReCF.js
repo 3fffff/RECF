@@ -214,9 +214,7 @@ export class ReCF {
     this.dft = new DFT(this.model_sz.width, this.model_sz.height, false)
     this.scale_factor = Math.sqrt(this.target.w * this.target.h / (this.model_sz.width * this.model_sz.height));
     const resize_factor = (1.0 / this.scale_factor) * (1.0 / this.target_padding);
-    this.model_xf = this.init_array()
     this.labels = this.makeLabels(~~(this.target.w * resize_factor), ~~(this.target.h * resize_factor));
-    this.filter = this.init_array()
     this.window = this.hann();
     this.currentScaleFactor = 1.0
     this.scaleFactors = Math.exp(scale_step, scale_exp);
@@ -319,8 +317,8 @@ export class ReCF {
   }
 
   computeADMM() {
-    let l_f = this.init_array();
-    let h_f = this.init_array();
+    const l_f = this.init_array();
+    const h_f = this.init_array();
     this.filter = this.init_array()
     let mu = 1;
     const T = this.model_sz.width * this.model_sz.height;
