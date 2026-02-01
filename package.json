@@ -4,13 +4,13 @@
   "description": "correlation filter",
   "main": "ReCF.js",
   "scripts": {
-    "devbuild":".\\node_modules\\.bin\\esbuild ReCF.js --bundle --outfile=dist/debug.js --global-name=recf --minify --sourcemap",
-    "build":".\\node_modules\\.bin\\esbuild ReCF.js --bundle --outfile=dist/bundle.js --global-name=recf --minify",
+    "devbuild": ".\\node_modules\\.bin\\esbuild ReCF.js --bundle --outfile=dist/debug.js --global-name=recf --minify --sourcemap",
+    "build": ".\\node_modules\\.bin\\esbuild ReCF.js --bundle --outfile=dist/bundle.js --global-name=recf --minify",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "esbuild": "0.20.2"
+    "esbuild": "^0.27.2"
   }
 }

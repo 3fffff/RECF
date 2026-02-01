@@ -41,53 +41,31 @@ export class ReCF {
   //conjB=false convolution either correlation
   mulSpectrums(dataA, dataB, conjB) {
     let result = { re: new Float32Array(dataA.re.length), im: new Float32Array(dataA.re.length) };
-    const rows = this.model_sz.width, cols = this.model_sz.height;
-    for (let k = 0; k < 2; k++) {
-      const kcols = k == 0 ? 0 : cols
-      for (let j = 0; j < rows; j++) {
-        const a_re = dataA.re[kcols + j], a_im = dataA.im[kcols + j];
-        let b_re = dataB.re[kcols + j], b_im = dataB.im[kcols + j];
-        if (conjB) b_im = -b_im;
-        result.re[kcols + j] = a_re * b_re - a_im * b_im;
-        result.im[kcols + j] = a_re * b_im + a_im * b_re;
-      }
-    }
-    for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++) {
-        const a_re = dataA.re[i * rows + j], a_im = dataA.im[i * rows + j];
-        let b_re = dataB.re[i * rows + j], b_im = dataB.im[i * rows + j];
-        if (conjB) b_im = -b_im;
-        result.re[i * rows + j] = a_re * b_re - a_im * b_im;
-        result.im[i * rows + j] = a_re * b_im + a_im * b_re;
-      }
+    for (let i = 0; i < dataA.re.length; i++) {
+      const a_re = dataA.re[i];
+      const a_im = dataA.im[i];
+      const b_re = dataB.re[i];
+      const b_im = conjB ? -dataB.im[i] : dataB.im[i];  // Conjugate if needed
+
+      // Complex multiplication: (a+bi) * (c±di) = (ac ∓ bd) + (ad ± bc)i
+      result.re[i] = a_re * b_re - a_im * b_im;  // Real: ac - bd
+      result.im[i] = a_re * b_im + a_im * b_re;  // Imag: ad + bc
     }
     return result
   }
 
   divSpectrums(dataA, dataB, conjB) {
     let result = { re: new Float32Array(dataA.re.length), im: new Float32Array(dataA.re.length) };
-    const rows = this.model_sz.width, cols = this.model_sz.height;
     const eps = 0.0000000001; // prevent div0 problems
-    for (let k = 0; k < 2; k++) {
-      const kcols = k == 0 ? 0 : cols
-      for (let j = 0; j < rows; j++) {
-        const a_re = dataA.re[kcols + j], a_im = dataA.im[kcols + j];
-        let b_re = dataB.re[kcols + j], b_im = dataB.im[kcols + j];
-        if (conjB) b_im = -b_im;
-        const denom = b_re * b_re + b_re * b_re
-        result.re[kcols + j] = (a_re * b_re + a_im * b_im) / (denom + eps);
-        result.im[kcols + j] = (a_re * b_im - a_im * b_re) / (denom + eps);
-      }
-    }
-    for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++) {
-        const a_re = dataA.re[i * rows + j], a_im = dataA.im[i * rows + j];
-        let b_re = dataB.re[i * rows + j], b_im = dataB.im[i * rows + j];
-        if (conjB) b_im = -b_im;
-        const denom = b_re * b_re + b_re * b_re
-        result.re[i * rows + j] = (a_re * b_re + a_im * b_im) / (denom + eps);
-        result.im[i * rows + j] = (a_re * b_im - a_im * b_re) / (denom + eps);
-      }
+    for (let i = 0; i < dataA.re.length; i++) {
+      const a_re = dataA.re[i];
+      const a_im = dataA.im[i];
+      const b_re = dataB.re[i];
+      const b_im = conjB ? -dataB.im[i] : dataB.im[i];  // Conjugate if needed
+
+      const denom = b_re * b_re + b_im * b_im
+      result.re[i] = (a_re * b_re + a_im * b_im) / (denom + eps);
+      result.im[i] = (a_re * b_im - a_im * b_re) / (denom + eps);
     }
     return result
   }
@@ -152,7 +130,7 @@ export class ReCF {
   }
 
   minMaxLoc(array) {
-    let max = 0, pos = { x: 0, y: 0 };
+    let max = -Infinity, pos = { x: 0, y: 0 };
     for (let x = 0; x < this.model_sz.width; x++) {
       for (let y = 0; y < this.model_sz.height; y++) {
         const val = array[(y * this.model_sz.width) + x];
@@ -246,13 +224,14 @@ export class ReCF {
     const maxpos = this.minMaxLoc(response.re);
     console.log(maxpos)
     //region w or h
-    const position = { x: Math.round(this.shiftIndex(maxpos.x, this.model_sz.width) * this.scale_factor), y: Math.round(this.shiftIndex(maxpos.y, this.model_sz.height) * this.scale_factor) }
-    console.log(position)
-    this.target.x += position.x
-    this.target.y += position.y
+    const dx = Math.round(this.shiftIndex(maxpos.x, this.model_sz.width) * this.scale_factor);
+    const dy = Math.round(this.shiftIndex(maxpos.y, this.model_sz.height) * this.scale_factor);
+
+    this.target.x += dx
+    this.target.y += dy
     console.log(this.target)
-    this.boundingBox.x += position.x
-    this.boundingBox.y += position.y
+    this.boundingBox.x += dx
+    this.boundingBox.y += dy
     console.log(this.boundingBox)
   }
 
@@ -276,23 +255,27 @@ export class ReCF {
   }
 
   hann() {
-    const array = { re: new Float32Array(this.model_sz.width * this.model_sz.height), im: new Float32Array(this.model_sz.width * this.model_sz.height) }
-    const vecx = Array(this.model_sz.width + this.target_padding)
-    const vecy = Array(this.model_sz.height + this.target_padding)
-    for (let i = 1; i < Math.round((this.model_sz.width + this.target_padding) / 2); i++) {
-      const x = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i / (this.model_sz.width + 1)));
-      vecx[i] = x
-      vecx[this.model_sz.width + this.target_padding - 1 - i] = x
-    }
-    for (let i = 1; i < Math.round((this.model_sz.height + this.target_padding) / 2); i++) {
-      const y = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i / (this.model_sz.height + 1)));
-      vecy[i] = y
-      vecy[this.model_sz.height + this.target_padding - 1 - i] = y
-    }
-    for (let x = 1; x < this.model_sz.width + this.target_padding - 1; x++)
-      for (let y = 1; y < this.model_sz.height + this.target_padding - 1; y++)
-        array.re[(y - 1) * this.model_sz.width + (x - 1)] = vecx[x] * vecy[y];
-    return array
+    const size = this.model_sz.width * this.model_sz.height;
+    const window = new Float32Array(size);
+    
+    // Precompute 1D windows
+    const winX = new Float32Array(this.model_sz.width);
+    const winY = new Float32Array(this.model_sz.height);
+    
+    for (let i = 0; i < this.model_sz.width; i++) 
+      winX[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (this.model_sz.width - 1)));
+    for (let i = 0; i < this.model_sz.height; i++) 
+      winY[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (this.model_sz.height - 1)));
+    
+    // Create 2D window
+    for (let y = 0; y < this.model_sz.height; y++) 
+      for (let x = 0; x < this.model_sz.width; x++) 
+        window[y * this.model_sz.width + x] = winX[x] * winY[y];
+    
+    return {
+      re: window,
+      im: new Float32Array(size) // Zero imaginary part
+    };
   }
 
   makeLabels(width, height) {
